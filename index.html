@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediaFlow Pro</title>
+    <style>
+        :root { --primary: #ea9800; --success: #00c853; --bg: #0f172a; --card: #1e293b; --text: #f8fafc; --border: #334155; --muted: #94a3b8; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .container { width: 90%; max-width: 400px; background: var(--card); padding: 25px; border-radius: 15px; border: 1px solid var(--border); }
+        h2 { text-align: center; color: var(--primary); margin-top: 0; }
+        input, select, .btn { width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 8px; border: 1px solid var(--border); box-sizing: border-box; font-size: 15px; }
+        input, select { background: #0f172a; color: white; outline: none; }
+        .btn { border: none; font-weight: bold; cursor: pointer; color: white; transition: 0.3s; }
+        .btn-fetch { background: var(--primary); }
+        .btn-dl { background: var(--success); display: none; }
+        
+        /* Progress Bar Styling */
+        #progress-container { display: none; background: #0f172a; padding: 15px; border-radius: 10px; margin-top: 10px; }
+        .bar-bg { width: 100%; height: 8px; background: #334155; border-radius: 4px; overflow: hidden; margin: 10px 0; }
+        .bar-fill { width: 0%; height: 100%; background: var(--success); transition: width 0.3s; }
+        .stats { display: grid; grid-template-columns: 1fr 1fr; font-size: 12px; color: var(--muted); }
+        #status-msg { text-align: center; font-size: 13px; color: var(--primary); margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🚀 MediaFlow Pro</h2>
+    <input type="text" id="url" placeholder="Paste link here...">
+    <button id="fetchBtn" class="btn btn-fetch" onclick="fetchMeta()">Scan Link</button>
+
+    <div id="setup" style="display:none">
+        <div id="title" style="font-size: 13px; margin-bottom: 10px; color: var(--muted);"></div>
+        <select id="fmtSelect"></select>
+        <button id="dlBtn" class="btn btn-dl" onclick="startDl()">Download Now</button>
+    </div>
+
+    <div id="progress-container">
+        <div id="p-status" style="font-weight: bold; font-size: 14px;">Initializing...</div>
+        <div class="bar-bg"><div id="bar" class="bar-fill"></div></div>
+        <div class="stats">
+            <span>Speed: <b id="p-speed">-</b></span>
+            <span style="text-align:right">ETA: <b id="p-eta">-</b></span>
+        </div>
+    </div>
+    <div id="status-msg">Ready</div>
+</div>
+
+<script>
+    const API = "http://localhost:5003";
+
+    async function fetchMeta() {
+        const url = document.getElementById('url').value;
+        if(!url) return;
+        document.getElementById('status-msg').innerText = "Scanning...";
+        
+        const res = await fetch(`${API}/fetch`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({url})
+        });
+        const data = await res.json();
+        
+        if(data.formats) {
+            const sel = document.getElementById('fmtSelect');
+            sel.innerHTML = '<option value="mp3">Audio (MP3)</option>';
+            data.formats.forEach(f => {
+                sel.innerHTML += `<option value="${f.id}">Video (${f.res})</option>`;
+            });
+            document.getElementById('title').innerText = data.title;
+            document.getElementById('setup').style.display = 'block';
+            document.getElementById('dlBtn').style.display = 'block';
+            document.getElementById('status-msg').innerText = "Link Loaded";
+        }
+    }
+
+    function startDl() {
+        const url = document.getElementById('url').value;
+        const fid = document.getElementById('fmtSelect').value;
+        
+        document.getElementById('progress-container').style.display = 'block';
+        document.getElementById('dlBtn').disabled = true;
+
+        const es = new EventSource(`${API}/progress`);
+        es.onmessage = (e) => {
+            const d = JSON.parse(e.data);
+            document.getElementById('p-status').innerText = `${d.status} (${d.percent})`;
+            document.getElementById('bar').style.width = d.percent;
+            document.getElementById('p-speed').innerText = d.speed;
+            document.getElementById('p-eta').innerText = d.eta;
+
+            if(d.status === "Finished") {
+                es.close();
+                document.getElementById('status-msg').innerText = "Saving to device...";
+                window.location.href = `${API}/get-file?path=${encodeURIComponent(d.file_path)}`;
+                setTimeout(() => { document.getElementById('dlBtn').disabled = false; }, 3000);
+            }
+        };
+
+        fetch(`${API}/download`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({url, format_id: fid})
+        });
+    }
+</script>
+</body>
+</html>
