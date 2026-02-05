@@ -52,37 +52,51 @@
 
     async function fetchMeta() {
         const url = document.getElementById('url').value;
+        const statusMsg = document.getElementById('status-msg');
+        
         if(!url) return;
-        document.getElementById('status-msg').innerText = "Scanning...";
-        
-        const res = await fetch(`${API}/fetch`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({url})
-        });
-        const data = await res.json();
-        
-        if(data.formats) {
-            const sel = document.getElementById('fmtSelect');
-            sel.innerHTML = '<option value="mp3">Audio (MP3)</option>';
-            data.formats.forEach(f => {
-                sel.innerHTML += `<option value="${f.id}">Video (${f.res})</option>`;
+        statusMsg.innerText = "⏳ Connecting to Server...";
+
+        try {
+            const res = await fetch(`${API}/fetch`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url})
             });
-            document.getElementById('title').innerText = data.title;
-            document.getElementById('setup').style.display = 'block';
-            document.getElementById('dlBtn').style.display = 'block';
-            document.getElementById('status-msg').innerText = "Link Loaded";
+
+            if (!res.ok) throw new Error("Server not responding");
+
+            const data = await res.json();
+            
+            if(data.formats) {
+                const sel = document.getElementById('fmtSelect');
+                sel.innerHTML = '<option value="mp3">Audio (MP3)</option>';
+                data.formats.forEach(f => {
+                    sel.innerHTML += `<option value="${f.id}">Video (${f.res})</option>`;
+                });
+                document.getElementById('title').innerText = data.title;
+                document.getElementById('setup').style.display = 'block';
+                document.getElementById('dlBtn').style.display = 'block';
+                statusMsg.innerText = "✅ Link Loaded";
+                statusMsg.style.color = "var(--success)";
+            }
+        } catch (err) {
+            console.error(err);
+            statusMsg.innerText = "⚠️ Error: API not connected. (Wait 1 min for Render to wake up)";
+            statusMsg.style.color = "#ff4444";
         }
     }
 
     function startDl() {
         const url = document.getElementById('url').value;
         const fid = document.getElementById('fmtSelect').value;
+        const statusMsg = document.getElementById('status-msg');
         
         document.getElementById('progress-container').style.display = 'block';
         document.getElementById('dlBtn').disabled = true;
 
         const es = new EventSource(`${API}/progress`);
+        
         es.onmessage = (e) => {
             const d = JSON.parse(e.data);
             document.getElementById('p-status').innerText = `${d.status} (${d.percent})`;
@@ -92,18 +106,30 @@
 
             if(d.status === "Finished") {
                 es.close();
-                document.getElementById('status-msg').innerText = "Saving to device...";
+                statusMsg.innerText = "📥 Saving to device...";
+            
                 window.location.href = `${API}/get-file?path=${encodeURIComponent(d.file_path)}`;
-                setTimeout(() => { document.getElementById('dlBtn').disabled = false; }, 3000);
+                setTimeout(() => { 
+                    document.getElementById('dlBtn').disabled = false; 
+                    statusMsg.innerText = "Ready";
+                }, 5000);
             }
+        };
+
+        es.onerror = () => {
+            console.log("Progress connection lost. Closing stream.");
+            es.close();
         };
 
         fetch(`${API}/download`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({url, format_id: fid})
+        }).catch(err => {
+            statusMsg.innerText = "❌ Download failed to start.";
         });
     }
 </script>
+
 </body>
 </html>
