@@ -5,7 +5,8 @@ import yt_dlp
 
 app = Flask(__name__)
 CORS(app)
-
+@app.route('/fetch', methods=['POST'])
+def fetch_meta():
 # Create a downloads folder if it doesn't exist
 DOWNLOAD_FOLDER = 'downloads'
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
